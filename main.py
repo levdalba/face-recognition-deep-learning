@@ -131,10 +131,10 @@ data = data.shuffle(buffer_size=1024)
 samples = data.as_numpy_iterator()
 samp = samples.next()
 
-plt.imshow(samp[1])
-plt.show()
+# plt.imshow(samp[1])
+# plt.show()
 
-print(samp[2])
+# print(samp[2])
 
 # Training partition
 # train_data = data.take(round(len(data) * 0.7))
@@ -146,3 +146,63 @@ print(samp[2])
 # test_data = test_data.take(round(len(data) * 0.3))
 # test_data = test_data.batch(16)
 # test_data = test_data.prefetch(8)
+
+
+def make_embedding():
+    inp = Input(shape=(100, 100, 3), name="input_image")
+
+    # first block
+    c1 = Conv2D(64, (10, 10), activation="relu")(inp)
+    m1 = MaxPooling2D(64, (2, 2), padding="same")(c1)
+
+    # second block
+    c2 = Conv2D(128, (7, 7), activation="relu")(m1)
+    m2 = MaxPooling2D(64, (2, 2), padding="same")(c2)
+
+    # third block
+    c3 = Conv2D(128, (4, 4), activation="relu")(m2)
+    m3 = MaxPooling2D(64, (2, 2), padding="same")(c3)
+
+    # final block
+    c4 = Conv2D(256, (4, 4), activation="relu")(m3)
+    f1 = Flatten()(c4)
+    d1 = Dense(4096, activation="relu")(f1)
+
+    return Model(inputs=[inp], outputs=[d1], name="embedding")
+
+
+embedding = make_embedding()
+
+
+# siamese L1Distance class
+class L1Distance(Layer):
+    # init method
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    # similiarity calculation
+    def call(self, input_embedding, validation_embedding):
+        return tf.math.abs(input_embedding - validation_embedding)
+
+
+def make_siamese_model():
+
+    # handle inputs
+    input_image = Input(shape=(100, 100, 3), name="input_image")
+
+    # validation image in network
+    validation_image = Input(shape=(100, 100, 3), name="validation_image")
+
+    # combine siamese distance components
+    siamese_layer = L1Dist()
+    siamese_layer._name = "siamese_distance"
+    distances = siamese_layer(embedding(input_image), embedding(validation_image))
+
+    # classification layer
+    classification = Dense(1, activation="sigmoid")(distances)
+
+    return Model(
+        inputs=[input_image, validation_image],
+        outputs="classifier",
+        name="siamese_model",
+    )
