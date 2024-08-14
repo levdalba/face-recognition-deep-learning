@@ -137,36 +137,36 @@ samp = samples.next()
 # print(samp[2])
 
 # Training partition
-# train_data = data.take(round(len(data) * 0.7))
-# train_data = train_data.batch(16)
-# train_data = train_data.prefetch(8)
+train_data = data.take(round(len(data) * 0.7))
+train_data = train_data.batch(16)
+train_data = train_data.prefetch(8)
 
 # # Testing partition
-# test_data = data.skip(round(len(data) * 0.7))
-# test_data = test_data.take(round(len(data) * 0.3))
-# test_data = test_data.batch(16)
-# test_data = test_data.prefetch(8)
+test_data = data.skip(round(len(data) * 0.7))
+test_data = test_data.take(round(len(data) * 0.3))
+test_data = test_data.batch(16)
+test_data = test_data.prefetch(8)
 
 
 def make_embedding():
     inp = Input(shape=(100, 100, 3), name="input_image")
 
-    # first block
+    # First block
     c1 = Conv2D(64, (10, 10), activation="relu")(inp)
     m1 = MaxPooling2D(64, (2, 2), padding="same")(c1)
 
-    # second block
+    # Second block
     c2 = Conv2D(128, (7, 7), activation="relu")(m1)
     m2 = MaxPooling2D(64, (2, 2), padding="same")(c2)
 
-    # third block
+    # Third block
     c3 = Conv2D(128, (4, 4), activation="relu")(m2)
     m3 = MaxPooling2D(64, (2, 2), padding="same")(c3)
 
-    # final block
+    # Final embedding block
     c4 = Conv2D(256, (4, 4), activation="relu")(m3)
     f1 = Flatten()(c4)
-    d1 = Dense(4096, activation="relu")(f1)
+    d1 = Dense(4096, activation="sigmoid")(f1)
 
     return Model(inputs=[inp], outputs=[d1], name="embedding")
 
@@ -175,34 +175,99 @@ embedding = make_embedding()
 
 
 # siamese L1Distance class
-class L1Distance(Layer):
-    # init method
+# Siamese L1 Distance class
+class L1Dist(Layer):
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+        super(L1Dist, self).__init__()
 
-    # similiarity calculation
     def call(self, input_embedding, validation_embedding):
+        # Ensure that the inputs are tensors
+        input_embedding = tf.convert_to_tensor(input_embedding)
+        validation_embedding = tf.convert_to_tensor(validation_embedding)
         return tf.math.abs(input_embedding - validation_embedding)
 
 
 def make_siamese_model():
 
-    # handle inputs
-    input_image = Input(shape=(100, 100, 3), name="input_image")
+    # Anchor image input in the network
+    input_image = Input(name="input_img", shape=(100, 100, 3))
 
-    # validation image in network
-    validation_image = Input(shape=(100, 100, 3), name="validation_image")
+    # Validation image in the network
+    validation_image = Input(name="validation_img", shape=(100, 100, 3))
 
-    # combine siamese distance components
+    # Combine siamese distance components
     siamese_layer = L1Dist()
-    siamese_layer._name = "siamese_distance"
+    siamese_layer._name = "distance"
     distances = siamese_layer(embedding(input_image), embedding(validation_image))
 
-    # classification layer
-    classification = Dense(1, activation="sigmoid")(distances)
+    # Classification layer
+    classifier = Dense(1, activation="sigmoid")(distances)
 
     return Model(
         inputs=[input_image, validation_image],
-        outputs="classifier",
-        name="siamese_model",
+        outputs=classifier,
+        name="SiameseNetwork",
     )
+
+
+siamese_model = make_siamese_model()
+
+binary_cross_loss = tf.losses.BinaryCrossentropy()
+opt = tf.keras.optimizers.Adam(1e-4)  # 0.0001
+
+checkpoint_dir = "./training_checkpoints"
+checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
+checkpoint = tf.train.Checkpoint(opt=opt, siamese_model=siamese_model)
+
+
+@tf.function
+def train_step(batch):
+    # Record all of our operations
+    with tf.GradientTape() as tape:
+        # Get anchor and positive/negative image
+        X = batch[:2]
+        # Get label
+        y = batch[2]
+
+        # Forward pass
+        yhat = siamese_model(X, training=True)
+
+        # Reshape y to match the shape of yhat
+        y = tf.reshape(y, yhat.shape)
+
+        # Calculate loss
+        loss = binary_cross_loss(y, yhat)
+    print(loss)
+
+    # Calculate gradients
+    grad = tape.gradient(loss, siamese_model.trainable_variables)
+
+    # Calculate updated weights and apply to siamese model
+    opt.apply_gradients(zip(grad, siamese_model.trainable_variables))
+
+    # Return loss
+    return loss
+
+
+def train(data, EPOCHS):
+    # loop through epochs
+    for epoch in range(1, EPOCHS + 1):
+        print("\n Epoch {}/{}".format(epoch, EPOCHS))
+        progrbar = tf.keras.utils.Progbar(len(train_data))
+
+        # loop through batches
+        for idx, batch in enumerate(train_data):
+            # run training step
+            train_step(batch)
+            progrbar.update(idx + 1)
+
+        # save checkpoint
+        if epoch % 10 == 0:
+            checkpoint.save(file_prefix=checkpoint_prefix)
+
+
+EPOCHS = 50
+
+# train(train_data, EPOCHS)
+
+
