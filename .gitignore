@@ -19,3 +19,4 @@ data/anchor/*.svg
 *.gif
 .DS_Store
 training_checkpoints/
+siamesemodel.h5
