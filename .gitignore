@@ -1,5 +1,6 @@
 venv/
 .venv/
+new_venv/
 data/anchor/*.jpg
 data/anchor/*.jpeg
 data/anchor/*.png
