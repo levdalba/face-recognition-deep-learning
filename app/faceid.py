@@ -21,12 +21,14 @@ class CamApp(App):
     def build(self):
         self.web_cam = Image(size_hint=(1, 0.8))
         self.button = Button(text="Verify", on_press=self.verify, size_hint=(1, 0.1))
-        self.verification = Label(text="Verification Uninitiated", size_hint=(1, 0.1))
+        self.verification_label = Label(
+            text="Verification Uninitiated", size_hint=(1, 0.1)
+        )
 
         layout = BoxLayout(orientation="vertical")
         layout.add_widget(self.web_cam)
         layout.add_widget(self.button)
-        layout.add_widget(self.verification)
+        layout.add_widget(self.verification_label)
 
         self.model = tf.keras.models.load_model(
             "siamesemodel.h5", custom_objects={"L1Dist": L1Dist}
@@ -98,9 +100,14 @@ class CamApp(App):
         )
         verified = verification > verification_threshold
 
-        self.verification.text = (
+        self.verification_label.text = (
             "Verification Successful" if verified else "Verification Failed"
         )
+
+        Logger.info(results)
+        Logger.info(detection)
+        Logger.info(verification)
+        Logger.info(verified)
 
         return results, verified
 
